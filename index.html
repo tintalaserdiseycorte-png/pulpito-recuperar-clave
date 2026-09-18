@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Púlpito — Nueva contraseña</title>
+<!-- Página independiente de la app de escritorio, pensada para alojarse
+     gratis en GitHub Pages. Recibe el link del correo de recuperación de
+     Supabase, deja escribir la contraseña nueva y listo — después la
+     persona vuelve a la app de escritorio e inicia sesión ahí con la
+     contraseña nueva. No guarda nada localmente ni pide más datos que la
+     contraseña nueva. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://mxgvaspztajgzxfgtxfq.supabase.co; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
+<style>
+  :root{
+    --bg1:#1a1a2e; --bg2:#0f0f1c;
+    --panel:#22223a; --border:#33335a;
+    --text:#f0f0f5; --text-muted:#a3a3c2;
+    --cian:#6FA8B0; --magenta:#9C3E9C; --violeta:#6c5ce7;
+    --error:#e05a5a; --ok:#4caf7a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    background:linear-gradient(135deg,var(--bg1),var(--bg2));
+    color:var(--text); padding:24px;
+  }
+  .card{
+    width:100%; max-width:400px; background:var(--panel); border:1px solid var(--border);
+    border-radius:16px; padding:32px; box-shadow:0 20px 60px rgba(0,0,0,.4);
+  }
+  .logo{ display:flex; justify-content:center; margin-bottom:16px; }
+  .logo span{
+    font-size:32px; font-weight:800; letter-spacing:.06em;
+    background:linear-gradient(90deg,var(--cian),var(--magenta),var(--violeta));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  h1{ font-size:18px; text-align:center; margin:0 0 6px; font-weight:600; }
+  p.sub{ text-align:center; color:var(--text-muted); font-size:14px; margin:0 0 24px; }
+  label{ display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px; }
+  input{
+    width:100%; padding:11px 12px; border-radius:10px; border:1px solid var(--border);
+    background:#1a1a2e; color:var(--text); font-size:14px; margin-bottom:16px;
+  }
+  input:focus{ outline:none; border-color:var(--cian); }
+  button{
+    width:100%; padding:12px; border:none; border-radius:10px; cursor:pointer;
+    font-size:14px; font-weight:600; color:#fff;
+    background:linear-gradient(90deg,var(--cian),var(--violeta));
+  }
+  button:disabled{ opacity:.55; cursor:default; }
+  .msg{ margin-top:16px; padding:10px 12px; border-radius:8px; font-size:13px; text-align:center; }
+  .msg-error{ background:rgba(224,90,90,.15); color:var(--error); }
+  .msg-ok{ background:rgba(76,175,122,.15); color:var(--ok); }
+  .hidden{ display:none; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo"><span>PÚLPITO</span></div>
+
+    <div id="estadoCargando">
+      <h1>Verificando el link…</h1>
+      <p class="sub">Un segundo, estamos confirmando el enlace de tu correo.</p>
+    </div>
+
+    <div id="estadoFormulario" class="hidden">
+      <h1>Elegí tu nueva contraseña</h1>
+      <p class="sub">Mínimo 6 caracteres.</p>
+      <form id="form">
+        <label for="pass1">Contraseña nueva</label>
+        <input type="password" id="pass1" required minlength="6" autocomplete="new-password">
+        <label for="pass2">Repetila</label>
+        <input type="password" id="pass2" required minlength="6" autocomplete="new-password">
+        <button type="submit" id="btnGuardar">Guardar contraseña</button>
+      </form>
+      <div id="msgBox"></div>
+    </div>
+
+    <div id="estadoListo" class="hidden">
+      <h1>¡Listo!</h1>
+      <p class="sub">Tu contraseña se actualizó. Ya podés volver a la app de escritorio Púlpito e iniciar sesión con tu contraseña nueva.</p>
+    </div>
+
+    <div id="estadoError" class="hidden">
+      <h1>Este link ya no es válido</h1>
+      <p class="sub">Puede haber expirado o ya haberse usado. Volvé a pedir "Olvidé mi contraseña" desde la app de escritorio para recibir un link nuevo.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
+  <script>
+    // Reemplazar por los mismos valores de src/js/supabaseClient.js en la
+    // app de escritorio (Project URL + clave anon — ninguna de las dos es
+    // secreta, están hechas para vivir en código del lado del cliente).
+    const SUPABASE_URL = 'https://mxgvaspztajgzxfgtxfq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14Z3Zhc3B6dGFqZ3p4Zmd0eGZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2ODE5NzcsImV4cCI6MjEwNTI1Nzk3N30.JWk7cBOR-K4adeHcokcZY0B2WcmTDLmEpIsBMQqtFjY';
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const $ = (id) => document.getElementById(id);
+    function mostrar(id) {
+      ['estadoCargando','estadoFormulario','estadoListo','estadoError'].forEach(x => $(x).classList.add('hidden'));
+      $(id).classList.remove('hidden');
+    }
+    function msg(texto, tipo) {
+      $('msgBox').innerHTML = `<div class="msg msg-${tipo}">${texto}</div>`;
+    }
+
+    // Supabase-js detecta automáticamente el token de recuperación que viene
+    // en la URL del link del correo y, si es válido, deja una sesión
+    // temporal activa (SOLO sirve para cambiar la contraseña, no da acceso
+    // a nada más). Si no hay sesión, el link ya no sirve.
+    sb.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
+        mostrar('estadoFormulario');
+      }
+    });
+
+    // Por si el evento ya disparó antes de que este script terminara de
+    // engancharse, chequeamos también la sesión directamente.
+    setTimeout(async () => {
+      if (!$('estadoFormulario').classList.contains('hidden')) return;
+      const { data } = await sb.auth.getSession();
+      if (data.session) mostrar('estadoFormulario');
+      else mostrar('estadoError');
+    }, 2500);
+
+    $('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const p1 = $('pass1').value, p2 = $('pass2').value;
+      if (p1 !== p2) { msg('Las dos contraseñas no coinciden.', 'error'); return; }
+      $('btnGuardar').disabled = true;
+      const { error } = await sb.auth.updateUser({ password: p1 });
+      if (error) {
+        msg('No se pudo guardar: ' + error.message, 'error');
+        $('btnGuardar').disabled = false;
+        return;
+      }
+      mostrar('estadoListo');
+    });
+  </script>
+</body>
+</html>
